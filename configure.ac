@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT([sipsak],[0.9.0],[nils@sipsak.org])
+AC_INIT([sipsak],[0.9.1],[nils@sipsak.org])
 AM_INIT_AUTOMAKE
 AM_MAINTAINER_MODE
 AC_CONFIG_SRCDIR([sipsak.c])
@@ -57,7 +57,6 @@ AC_CHECK_LIB(crypto, MD5_Init,
 )
 CHECK_LIB_RULI
 
-SIPSAK_RETRYS
 SIPSAK_TIMER
 
 AC_CONFIG_FILES([Makefile])

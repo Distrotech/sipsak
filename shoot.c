@@ -19,9 +19,6 @@
 
 #include "sipsak.h"
 
-#ifdef HAVE_LIMITS_H
-# include <limits.h>
-#endif
 #ifdef TIME_WITH_SYS_TIME
 # include <sys/time.h>
 # include <time.h>
@@ -159,13 +156,15 @@ int check_for_message(char *recv, int size) {
 		dontrecv = 0;
 	}
 
+	/* store the time of our first send */
+	if (send_counter==1) {
+		memcpy(&firstsendt, &sendtime, sizeof(struct timeval));
+	}
+	if (retryAfter == SIP_T1) {
+		memcpy(&starttime, &sendtime, sizeof(struct timeval));
+	}
 	if (ret == 0)
 	{
-		/* store the time of our first send */
-		if (send_counter==1)
-			memcpy(&firstsendt, &sendtime, sizeof(struct timeval));
-		if (retryAfter == SIP_T1)
-			memcpy(&starttime, &sendtime, sizeof(struct timeval));
 		/* lets see if we at least received an icmp error */
 		if (csock == -1) 
 			sockerr.fd=usock;
@@ -213,7 +212,7 @@ int check_for_message(char *recv, int size) {
 		senddiff = deltaT(&starttime, &recvtime);
 		if (senddiff > (float)64 * (float)SIP_T1) {
 			if (verbose>0)
-				printf("*** giving up, no response after %.3f ms\n", senddiff);
+				printf("*** giving up, no final response after %.3f ms\n", senddiff);
 			exit_code(3);
 		}
 		/* set retry time according to RFC3261 */
@@ -341,10 +340,9 @@ int recv_message(char *buf, int size) {
 #endif
 	*(buf+ ret) = '\0';
 	if (ret > 0) {
-		/* store the time of our first send */
-		if (send_counter == 1)
-			memcpy(&firstsendt, &sendtime, sizeof(struct timeval));
-		retryAfter = SIP_T1;
+		if (!inv_trans && (regexec(&proexp, rec, 0, 0, 0) != REG_NOERROR)) {
+			retryAfter = SIP_T1;
+		}
 		/* store the biggest delay if one occured */
 		if (delaytime.tv_sec != 0) {
 			tmp_delay = deltaT(&delaytime, &recvtime);
@@ -624,7 +622,8 @@ void handle_usrloc()
 
 	if (regexec(&proexp, rec, 0, 0, 0) == REG_NOERROR) {
 		if (verbose > 2) {
-			printf("\nignoring provisional response\n");
+			print_message_line(rec);
+			printf("ignoring provisional response\n\n");
 		}
 		if (inv_trans) {
 			retryAfter = retryAfter * 2;
@@ -1072,9 +1071,6 @@ void before_sending()
 		if (verbose > 2)
 			printf("request:\n%s\n", req);
 	}
-	else if (trace == 0 && usrloc == 0 && flood == 0 && randtrash == 0 && (verbose > 1)	&& dontsend == 0){
-		printf("** request **\n%s\n", req);
-	}
 }
 
 /* this is the main function with the loops and modes */
@@ -1320,7 +1316,7 @@ void shoot(char *buf, int buff_size)
 						(regexec(&replyexp, rec, 0, 0, 0) == REG_NOERROR) && 
 						(regexec(&proexp, rec, 0, 0, 0) == REG_NOMATCH)) { 
 					build_ack(req, rec);
-					dont_send = 0;
+					dontsend = 0;
 					inv_trans = 0;
 					/* lets fire the ACK to the server */
 					send_message(req, (struct sockaddr *)&addr);

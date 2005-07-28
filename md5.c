@@ -1,6 +1,6 @@
 /* 
 
-$Id: md5.c,v 1.3 2005/04/10 20:25:48 calrissian Exp $
+$Id$
 
 MD5C.C - RSA Data Security, Inc., MD5 message-digest algorithm
 
