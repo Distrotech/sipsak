@@ -1,5 +1,5 @@
 /*
- * $Id: sipsak.c,v 1.53 2003/10/06 16:28:00 calrissian Exp $
+ * $Id$
  *
  * Copyright (C) 2002-2003 Fhg Fokus
  *

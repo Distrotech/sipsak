@@ -1,5 +1,5 @@
 /*
- * $Id: auth.h,v 1.1 2003/04/04 02:12:18 calrissian Exp $
+ * $Id$
  *
  * Copyright (C) 2002-2003 Fhg Fokus
  *

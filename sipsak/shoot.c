@@ -1,5 +1,5 @@
 /*
- * $Id: shoot.c,v 1.8 2003/10/06 19:16:31 calrissian Exp $
+ * $Id$
  *
  * Copyright (C) 2002-2003 Fhg Fokus
  *

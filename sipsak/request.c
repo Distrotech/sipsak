@@ -1,5 +1,5 @@
 /*
- * $Id: request.c,v 1.3 2003/10/09 15:02:28 calrissian Exp $
+ * $Id$
  *
  * Copyright (C) 2002-2003 Fhg Fokus
  *

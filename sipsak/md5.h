@@ -1,5 +1,5 @@
 /* MD5.H - header file for MD5C.C
- * $Id: md5.h,v 1.1 2003/03/18 05:00:04 calrissian Exp $
+ * $Id$
  */
 
 
