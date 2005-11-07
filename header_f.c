@@ -36,18 +36,21 @@ void add_via(char *mes)
 		   direct after the first line. */
 		via=strchr(mes,'\n');
 		if(via == NULL) {
-			fprintf(stderr, "error: failed to find a position to insert Via\n");
-			exit_code(1);
+			fprintf(stderr, "error: failed to find a position to insert Via:\n"
+											"'%s'\n", mes);
+			exit_code(2);
 		}
 		via++;
 	}
 	if (*via == '\n')
 		via++;
 	/* build our own Via-header-line */
-	via_line = str_alloc(VIA_SIP_STR_LEN+strlen(fqdn)+15+24+1);
-	snprintf(via_line, VIA_SIP_STR_LEN+strlen(fqdn)+15+24, 
-					"%s%s:%i;branch=z9hG4bK.%08x;rport\r\n", 
-					VIA_SIP_STR, fqdn, lport, rand());
+	via_line = str_alloc(VIA_SIP_STR_LEN+TRANSPORT_STR_LEN+1+
+			strlen(fqdn)+15+30+1);
+	snprintf(via_line,
+					VIA_SIP_STR_LEN+TRANSPORT_STR_LEN+1+strlen(fqdn)+15+30, 
+					"%s%s %s:%i;branch=z9hG4bK.%08x;rport;alias\r\n", 
+					VIA_SIP_STR, transport_str, fqdn, lport, rand());
 	if (verbose > 2)
 		printf("our Via-Line: %s\n", via_line);
 

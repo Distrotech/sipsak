@@ -109,11 +109,55 @@ unsigned long getaddress(char *host) {
 	return l;
 }
 
-unsigned long getsrvaddress(char *host, int *port) {
+unsigned long getsrvadr(char *host, int *port, int *transport) {
+	unsigned long adr = 0;
+	int srvport = 5060;
+
+#ifdef WITH_TLS_TRANSP
+	adr = getsrvaddress(host, &srvport, SRV_SIP_TLS);
+	if (adr != 0) {
+		*transport = SIP_TLS_TRANSPORT;
+		if (verbose > 1)
+			printf("using SRV record: %s.%s\n", SRV_SIP_TLS, host);
+		printf("TLS trnasport not yet supported\n");
+		exit_code(2);
+	}
+	else {
+#endif
+#ifdef WITH_TCP_TRANSP
+		adr = getsrvaddress(host, &srvport, SRV_SIP_TCP);
+		if (adr != 0) {
+			*transport = SIP_TCP_TRANSPORT;
+			if (verbose > 1)
+				printf("using SRV record: %s.%s\n", SRV_SIP_TCP, host);
+		}
+		else {
+#endif
+			adr = getsrvaddress(host, &srvport, SRV_SIP_UDP);
+			if (adr != 0) {
+				*transport = SIP_UDP_TRANSPORT;
+				if (verbose > 1)
+					printf("using SRV record: %s.%s\n", SRV_SIP_UDP, host);
+			}
+#ifdef WITH_TCP_TRANSP
+		}
+#endif
+#ifdef WITH_TLS_TRANSP
+	}
+#endif
+	*port = srvport;
+	return adr;
+}
+
+unsigned long getsrvaddress(char *host, int *port, char *srv) {
 #ifdef HAVE_RULI_H
 	int srv_code;
+	int ruli_opts = RULI_RES_OPT_SEARCH | RULI_RES_OPT_SRV_NOINET6 | RULI_RES_OPT_SRV_NOSORT6 | RULI_RES_OPT_SRV_NOFALL;
+#ifdef RULI_RES_OPT_SRV_CNAME
+	ruli_opts |= RULI_RES_OPT_SRV_CNAME;
+#endif
 
-	ruli_sync_t *sync_query = ruli_sync_query("_sip._udp", host, 5060, RULI_RES_OPT_SEARCH | RULI_RES_OPT_SRV_NOINET6 | RULI_RES_OPT_SRV_NOSORT6);
+	ruli_sync_t *sync_query = ruli_sync_query(srv, host, *port, ruli_opts);
 
 	/* sync query failure? */
 	if (!sync_query) {
@@ -147,8 +191,9 @@ unsigned long getsrvaddress(char *host, int *port) {
 	int srv_list_size = ruli_list_size(srv_list);
 
 	if (srv_list_size < 1) {
-		printf("Empty SRV list for: %s\n", host);
-		exit_code(2);
+		if (verbose > 1)
+			printf("No SRV record: %s.%s\n", srv, host);
+		return 0;
 	}
 
 	ruli_srv_entry_t *entry = (ruli_srv_entry_t *) ruli_list_get(srv_list, 0);
@@ -414,27 +459,6 @@ int read_stdin(char *buf, int size)
 	if (verbose)
 		fprintf(stderr, "warning: readin buffer size exceeded\n");
 	return i;
-}
-
-/* clears the given sockaddr, fills it with the given data and if a
- * socket is given connects the socket to the new target */
-void set_target(struct sockaddr_in *adr, unsigned long target, int port, int socket)
-{
-	memset(adr, 0, sizeof(struct sockaddr_in));
-	adr->sin_addr.s_addr = target;
-	adr->sin_port = htons((short)port);
-	adr->sin_family = AF_INET;
-
-#ifdef HAVE_INET_NTOP
-	inet_ntop(adr->sin_family, &adr->sin_addr, &target_dot[0], INET_ADDRSTRLEN);
-#endif
-
-	if (socket != -1) {
-		if (connect(socket, (struct sockaddr *)adr, sizeof(struct sockaddr_in)) == -1) {
-			perror("connecting UDP socket failed");
-			exit_code(2);
-		}
-	}
 }
 
 /* tries to allocate the given size of memory and sets it all to zero.

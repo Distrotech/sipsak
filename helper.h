@@ -30,9 +30,15 @@
 # include <sys/socket.h>
 #endif
 
+#define SRV_SIP_TLS "_sip._tls"
+#define SRV_SIP_TCP "_sip._tcp"
+#define SRV_SIP_UDP "_sip._udp"
+
 unsigned long getaddress(char *host);
 
-unsigned long getsrvaddress(char *host, int *port);
+unsigned long getsrvadr(char *host, int *port, int *transport);
+
+unsigned long getsrvaddress(char *host, int *port, char *srv);
 
 void get_fqdn();
 
@@ -53,8 +59,6 @@ int is_number(char *number);
 int str_to_int(char *num);
 
 int read_stdin(char *buf, int size);
-
-void set_target(struct sockaddr_in *adr, unsigned long target, int port, int socket);
 
 void *str_alloc(size_t size);
 #endif

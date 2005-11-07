@@ -146,6 +146,7 @@ void print_long_help() {
 		"  --symmetric                send and received on the same port\n"
 		"  --from=SIPURI              use the given uri as From in MESSAGE\n"
 		"  --invite-timeout=NUMBER    timeout multiplier for INVITE transactions\n"
+		"  --transport                use TCP instead of UDP transport\n"
 		);
 	exit_code(0);
 }
@@ -209,6 +210,7 @@ void print_help() {
 		"  -S                use same port for receiving and sending\n"
 		"  -c SIPURI         use the given uri as From in MESSAGE\n"
 		"  -D NUMBER         timeout multiplier for INVITE transactions\n"
+		"  -E                use TCP instead of UDP as transport\n"
 		);
 		exit_code(0);
 }
@@ -217,7 +219,7 @@ int main(int argc, char *argv[])
 {
 	FILE	*pf;
 	char	buff[BUFSIZE];
-	int		c, i, port;
+	int		c, i, port, tsp;
 	char	*scheme, *user, *host, *backup;
 	pid_t 	pid;
 	struct 	timespec ts;
@@ -268,6 +270,7 @@ int main(int argc, char *argv[])
 		{"symmetric", 0, 0, 'S'},
 		{"from", 1, 0, 'c'},
 		{"invite-timeout", 1, 0, 'D'},
+		{"transport", 0, 0, 'E'},
 		{0, 0, 0, 0}
 	};
 #endif
@@ -281,7 +284,7 @@ int main(int argc, char *argv[])
 	con_dis=auth_username=from_uri = NULL;
 	scheme = user = host = backup = req = rep = rec = NULL;
 	re = NULL;
-	address = 0;
+	address=transport=tsp = 0;
 	rport = port = 0;
 	expires_t = USRLOC_EXP_DEF;
 	inv_final = 64 * SIP_T1;
@@ -294,9 +297,9 @@ int main(int argc, char *argv[])
 
 	/* lots of command line switches to handle*/
 #ifdef HAVE_GETOPT_LONG
-	while ((c=getopt_long(argc, argv, "a:Ab:B:c:C:dD:e:f:Fg:GhH:iIl:Lm:MnNo:O:p:P:q:r:Rs:St:Tu:UvVwW:x:Xz:", l_opts, &option_index)) != EOF){
+	while ((c=getopt_long(argc, argv, "a:Ab:B:c:C:dD:e:Ef:Fg:GhH:iIl:Lm:MnNo:O:p:P:q:r:Rs:St:Tu:UvVwW:x:Xz:", l_opts, &option_index)) != EOF){
 #else
-	while ((c=getopt(argc,argv,"a:Ab:B:c:C:dD:e:f:Fg:GhH:iIl:Lm:MnNo:O:p:P:q:r:Rs:St:Tu:UvVwW:x:z:")) != EOF){
+	while ((c=getopt(argc, argv, "a:Ab:B:c:C:dD:e:Ef:Fg:GhH:iIl:Lm:MnNo:O:p:P:q:r:Rs:St:Tu:UvVwW:x:z:")) != EOF){
 #endif
 		switch(c){
 			case 'a':
@@ -376,6 +379,9 @@ int main(int argc, char *argv[])
 				break;
 			case 'e':
 				nameend=str_to_int(optarg);
+				break;
+			case 'E':
+				transport = SIP_TCP_TRANSPORT;
 				break;
 			case 'F':
 				flood=1;
@@ -465,7 +471,7 @@ int main(int argc, char *argv[])
 					exit_code(2);
 				}
 				if (!rport)
-					address = getsrvaddress(host, &rport);
+					address = getsrvadr(host, &rport, &tsp);
 				if (!address)
 					address = getaddress(host);
 				if (!address){
@@ -473,6 +479,14 @@ int main(int argc, char *argv[])
 						"address\n");
 					exit_code(2);
 				}
+				else {
+					if (transport == 0)
+						transport = SIP_UDP_TRANSPORT;
+					if (verbose > 1)
+						printf("using A record: %s\n", host);
+				}
+				if (transport == 0)
+					transport = tsp;
 				outbound_proxy=1;
 				break;
 			case 'P':
@@ -533,19 +547,28 @@ int main(int argc, char *argv[])
 				if (port && !rport) {
 					rport = port;
 				}
-				if (!rport && !address)
-					address = getsrvaddress(domainname, &rport);
+				if (!rport && !address) {
+					address = getsrvadr(domainname, &rport, &tsp);
+				}
 				if (!address)
 					address = getaddress(domainname);
 				if (!address){
 					fprintf(stderr, "error:unable to determine the IP address for: %s\n", domainname);
 					exit_code(2);
 				}
+				else {
+					if (transport == 0)
+						transport = SIP_UDP_TRANSPORT;
+					if (verbose > 1)
+						printf("using A record: %s\n", domainname);
+				}
 				if (port != 0) {
 					backup = str_alloc(strlen(domainname)+1+6);
 					snprintf(backup, strlen(domainname)+6, "%s:%i", domainname, port);
 					domainname = backup;
 				}
+				if (transport == 0)
+					transport = tsp;
 				uri_b=1;
 				break;
 			case 'S':
@@ -776,6 +799,22 @@ int main(int argc, char *argv[])
 			exit_code(2);
 		}
 	}
+
+	switch (transport) {
+		case SIP_TLS_TRANSPORT:
+			transport_str = TRANSPORT_TLS_STR;
+			break;
+		case SIP_TCP_TRANSPORT:
+			transport_str = TRANSPORT_TCP_STR;
+			break;
+		case SIP_UDP_TRANSPORT:
+			transport_str = TRANSPORT_UDP_STR;
+			break;
+		default:
+			fprintf(stderr, "unknown transport: %i\n", transport);
+			exit_code(2);
+	}
+
 	/* determine our hostname */
 	get_fqdn();
 	
