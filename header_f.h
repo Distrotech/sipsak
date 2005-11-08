@@ -20,6 +20,8 @@
 #ifndef SIPSAK_HEADER_H
 #define SIPSAK_HEADER_H
 
+#include "shoot.h"
+
 void add_via(char *mes);
 
 void cpy_vias(char *reply, char *dest);
@@ -36,7 +38,9 @@ int find_lr_parameter(char *rr_line);
 
 void cpy_rr(char* src, char *dst, int route);
 
-void build_ack(char *invite, char *reply, char *dest);
+//void build_ack(char *invite, char *reply, char *dest);
+void build_ack(char *invite, char *reply, char *dest, 
+			struct sipsak_regexp *reg);
 
 void warning_extract(char *message);
 

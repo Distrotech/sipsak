@@ -312,7 +312,8 @@ void cpy_rr(char* src, char *dst, int route) {
 
 /* build an ACK from the given invite and reply.
  * NOTE: space has to be allocated allready for the ACK */
-void build_ack(char *invite, char *reply, char *dest) {
+void build_ack(char *invite, char *reply, char *dest, 
+			struct sipsak_regexp *reg) {
 	char *tmp;
 	int len;
 
@@ -327,7 +328,7 @@ void build_ack(char *invite, char *reply, char *dest) {
 	replace_string(dest, "INVITE", "ACK");
 	set_cl(dest, 0);
 	cpy_to(reply, dest);
-	if (regexec(&okexp, reply, 0, 0, 0)==0) {
+	if (regexec(&(reg->okexp), reply, 0, 0, 0)==0) {
 		cpy_rr(reply, dest, 1);
 		/* 200 ACK must be in new transaction */
 		new_branch(dest);

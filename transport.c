@@ -1,5 +1,5 @@
 /*
- * $Id$
+ * $Id:$
  *
  * Copyright (C) 2005 Nils Ohlmeier
  *
@@ -43,6 +43,7 @@
 # include <arpa/inet.h>
 #endif
 
+#include "transport.h"
 #include "shoot.h"
 
 #ifdef RAW_SUPPORT
@@ -68,18 +69,18 @@
 int rawsock;
 #endif
 
-void create_sockets(struct sockaddr_in *adr, int usock, int csock) {
+void create_sockets(struct sipsak_con_data *cd) {
 	socklen_t slen;
 
 	if (transport == SIP_UDP_TRANSPORT) {
 		/* create the un-connected socket */
 		if (!symmetric) {
-			usock = (int)socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-			if (usock==-1) {
+			cd->usock = (int)socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+			if (cd->usock==-1) {
 				perror("unconnected UDP socket creation failed");
 				exit_code(2);
 			}
-			if (bind(usock, (struct sockaddr *) adr, sizeof(struct sockaddr_in) )==-1) {
+			if (bind(cd->usock, (struct sockaddr *) &(cd->adr), sizeof(struct sockaddr_in) )==-1) {
 				perror("unconnected UDP socket binding failed");
 				exit_code(2);
 			}
@@ -95,15 +96,15 @@ void create_sockets(struct sockaddr_in *adr, int usock, int csock) {
 #endif
 			/* create the connected socket as a primitve alternative to the 
 			   raw socket*/
-			csock = (int)socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-			if (csock==-1) {
+			cd->csock = (int)socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+			if (cd->csock==-1) {
 				perror("connected UDP socket creation failed");
 				exit_code(2);
 			}
 
 			if (!symmetric)
-				adr->sin_port = htons((short)0);
-			if (bind(csock, (struct sockaddr *) adr, sizeof(struct sockaddr_in) )==-1) {
+				cd->adr.sin_port = htons((short)0);
+			if (bind(cd->csock, (struct sockaddr *) &(cd->adr), sizeof(struct sockaddr_in) )==-1) {
 				perror("connected UDP socket binding failed");
 				exit_code(2);
 			}
@@ -112,12 +113,12 @@ void create_sockets(struct sockaddr_in *adr, int usock, int csock) {
 #endif
 	}
 	else {
-		csock = (int)socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-		if (csock==-1) {
+		cd->csock = (int)socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (cd->csock==-1) {
 			perror("TCP socket creation failed");
 			exit_code(2);
 		}
-		if (bind(csock, (struct sockaddr *) adr, sizeof(struct sockaddr_in) )==-1) {
+		if (bind(cd->csock, (struct sockaddr *) &(cd->adr), sizeof(struct sockaddr_in) )==-1) {
 			perror("TCP socket binding failed");
 			exit_code(2);
 		}
@@ -125,32 +126,35 @@ void create_sockets(struct sockaddr_in *adr, int usock, int csock) {
 
 	/* for the via line we need our listening port number */
 	if (lport==0){
-		memset(adr, 0, sizeof(struct sockaddr_in));
+		memset(&(cd->adr), 0, sizeof(struct sockaddr_in));
 		slen=sizeof(struct sockaddr_in);
 		if (symmetric || transport != SIP_UDP_TRANSPORT)
-			getsockname(csock, (struct sockaddr *)adr, &slen);
+			getsockname(cd->csock, (struct sockaddr *) &(cd->adr), &slen);
 		else
-			getsockname(usock, (struct sockaddr *)adr, &slen);
-		lport=ntohs(adr->sin_port);
+			getsockname(cd->usock, (struct sockaddr *) &(cd->adr), &slen);
+		lport=ntohs(cd->adr.sin_port);
 	}
 }
 
-void send_message(char* mes, struct sockaddr *dest, int usock, int csock, 
-			int *dontsend, struct timeval *sendtime, struct timezone *tz, int *send_counter) {
+/*void send_message(char* mes, struct sockaddr *dest, int usock, int csock, 
+			int *dontsend, struct timeval *sendtime, int *send_counter) {*/
+void send_message(char* mes, struct sipsak_con_data *cd,
+			struct sipsak_counter *sc, struct sipsak_sr_time *srt) {
+	struct timezone tz;
 	int ret;
 
-	if (dontsend == 0) {
+	if (cd->dontsend == 0) {
 		if (verbose > 2) {
 			printf("\nrequest:\n%s", mes);
 		}
 		/* lets fire the request to the server and store when we did */
-		if (csock == -1) {
-			ret = sendto(usock, mes, strlen(mes), 0, dest, sizeof(struct sockaddr));
+		if (cd->csock == -1) {
+			ret = sendto(cd->usock, mes, strlen(mes), 0, (struct sockaddr *) &(cd->adr), sizeof(struct sockaddr));
 		}
 		else {
-			ret = send(csock, mes, strlen(mes), 0);
+			ret = send(cd->csock, mes, strlen(mes), 0);
 		}
-		(void)gettimeofday(sendtime, tz);
+		(void)gettimeofday(&(srt->sendtime), &tz);
 		if (ret==-1) {
 			printf("\n");
 			perror("send failure");
@@ -161,10 +165,10 @@ void send_message(char* mes, struct sockaddr *dest, int usock, int csock,
 			printf("\nsend to: %s:%s:%i\n", transport_str, target_dot, rport);
     }
 #endif
-		send_counter++;
+		sc->send_counter++;
 	}
 	else {
-		dontsend = 0;
+		cd->dontsend = 0;
 	}
 }
 
@@ -188,64 +192,70 @@ void check_socket_error(int socket, int size) {
 	}
 }
 
-int check_for_message(char *recv, int size, int *dontrecv,
-				struct timeval *tv, int *retryAfter, int usock, int csock,
-				struct timeval *recvtime, struct timezone *tz, int send_counter,
+/*int check_for_message(char *recv, int size, int *dontrecv,
+				int *retryAfter, int usock, int csock,
+				struct timeval *recvtime, int send_counter,
 				struct timeval *firstsendt, struct timeval *sendtime,
 				struct timeval *starttime, int *randretrys, double *senddiff,
-				int inv_trans, int *retrans_s_c, struct timeval *delaytime) {
+				int inv_trans, int *retrans_s_c, struct timeval *delaytime) {*/
+int check_for_message(char *recv, int size, struct sipsak_con_data *cd,
+			struct sipsak_sr_time *srt, struct sipsak_counter *count,
+			struct sipsak_delay *sd) {
 	fd_set	fd;
+	struct timezone tz;
+	struct timeval tv;
+	double senddiff;
 	int ret = 0;
 
-	if (dontrecv == 0) {
+	if (cd->dontrecv == 0) {
 		/* set the timeout and wait for a response */
-		tv->tv_sec = *retryAfter/1000;
-		tv->tv_usec = (*retryAfter % 1000) * 1000;
+		tv.tv_sec = sd->retryAfter/1000;
+		tv.tv_usec = (sd->retryAfter % 1000) * 1000;
 
 		FD_ZERO(&fd);
-		if (usock != -1)
-			FD_SET(usock, &fd); 
-		if (csock != -1)
-			FD_SET(csock, &fd); 
+		if (cd->usock != -1)
+			FD_SET(cd->usock, &fd); 
+		if (cd->csock != -1)
+			FD_SET(cd->csock, &fd); 
 #ifdef RAW_SUPPORT
 		if (rawsock != -1)
 			FD_SET(rawsock, &fd); 
 #endif
 
-		ret = select(FD_SETSIZE, &fd, NULL, NULL, tv);
-		(void)gettimeofday(recvtime, tz);
+		ret = select(FD_SETSIZE, &fd, NULL, NULL, &tv);
+		(void)gettimeofday(&(srt->recvtime), &tz);
 	}
 	else {
-		dontrecv = 0;
+		cd->dontrecv = 0;
 	}
 
 	/* store the time of our first send */
-	if (send_counter==1) {
-		memcpy(firstsendt, sendtime, sizeof(struct timeval));
+	if (count->send_counter==1) {
+		memcpy(&(srt->firstsendt), &(srt->sendtime), sizeof(struct timeval));
 	}
-	if (*retryAfter == SIP_T1) {
-		memcpy(starttime, sendtime, sizeof(struct timeval));
+	if (sd->retryAfter == SIP_T1) {
+		memcpy(&(srt->starttime), &(srt->sendtime), sizeof(struct timeval));
 	}
 	if (ret == 0)
 	{
 		/* lets see if we at least received an icmp error */
-		if (csock == -1) 
-			check_socket_error(usock, size);
+		if (cd->csock == -1) 
+			check_socket_error(cd->usock, size);
 		else
-			check_socket_error(csock, size);
+			check_socket_error(cd->csock, size);
 		/* printout that we did not received anything */
 		if (trace == 1) {
-			printf("%i: timeout after %i ms\n", namebeg, *retryAfter);
+			printf("%i: timeout after %i ms\n", namebeg, sd->retryAfter);
 		}
 		else if (usrloc == 1||invite == 1||message == 1) {
-			printf("timeout after %i ms\n", *retryAfter);
+			printf("timeout after %i ms\n", sd->retryAfter);
 		}
 		else if (verbose>0) 
-			printf("** timeout after %i ms**\n", *retryAfter);
+			printf("** timeout after %i ms**\n", sd->retryAfter);
 		if (randtrash == 1) {
 			printf("did not get a response on this request:\n%s\n", req);
 			if (cseq_counter < nameend) {
-				if (*randretrys == 2) {
+				if (count->randretrys == 2) {
 					printf("sended the following message three "
 							"times without getting a response:\n%s\n"
 							"give up further retransmissions...\n", req);
@@ -254,26 +264,26 @@ int check_for_message(char *recv, int size, int *dontrecv,
 				else {
 					printf("resending it without additional "
 							"random changes...\n\n");
-					randretrys++;
+					(count->randretrys)++;
 				}
 			}
 		}
-		*senddiff = deltaT(starttime, recvtime);
-		if (*senddiff > (float)64 * (float)SIP_T1) {
+		senddiff = deltaT(&(srt->starttime), &(srt->recvtime));
+		if (senddiff > (float)64 * (float)SIP_T1) {
 			if (verbose>0)
-				printf("*** giving up, no final response after %.3f ms\n", *senddiff);
+				printf("*** giving up, no final response after %.3f ms\n", senddiff);
 			exit_code(3);
 		}
 		/* set retry time according to RFC3261 */
-		if ((inv_trans) || (*retryAfter *2 < SIP_T2)) {
-			*retryAfter = *retryAfter * 2;
+		if ((inv_trans) || (sd->retryAfter *2 < SIP_T2)) {
+			sd->retryAfter = sd->retryAfter * 2;
 		}
 		else {
-			*retryAfter = SIP_T2;
+			sd->retryAfter = SIP_T2;
 		}
-		retrans_s_c++;
-		if (delaytime->tv_sec == 0)
-			memcpy(&delaytime, &sendtime, sizeof(struct timeval));
+		(count->retrans_s_c)++;
+		if (srt->delaytime.tv_sec == 0)
+			memcpy(&(srt->delaytime), &(srt->sendtime), sizeof(struct timeval));
 		/* if we did not exit until here lets try another send */
 		return -1;
 	}
@@ -281,11 +291,11 @@ int check_for_message(char *recv, int size, int *dontrecv,
 		perror("select error");
 		exit_code(2);
 	}
-	else if (((usock != -1) && FD_ISSET(usock, &fd)) || ((csock != -1) && FD_ISSET(csock, &fd))) {
-		if ((usock != -1) && FD_ISSET(usock, &fd))
-			ret = usock;
-		else if ((csock != -1) && FD_ISSET(csock, &fd))
-			ret = csock;
+	else if (((cd->usock != -1) && FD_ISSET(cd->usock, &fd)) || ((cd->csock != -1) && FD_ISSET(cd->csock, &fd))) {
+		if ((cd->usock != -1) && FD_ISSET(cd->usock, &fd))
+			ret = cd->usock;
+		else if ((cd->csock != -1) && FD_ISSET(cd->csock, &fd))
+			ret = cd->csock;
 		else {
 			printf("unable to determine the socket which received something\n");
 			exit_code(2);
@@ -308,9 +318,13 @@ int check_for_message(char *recv, int size, int *dontrecv,
 	return ret;
 }
 
-int recv_message(char *buf, int size, int inv_trans, int *retryAfter,
+/*int recv_message(char *buf, int size, int inv_trans, int *retryAfter,
 					struct timeval *delaytime, struct timeval *recvtime,
-					double *big_delay) {
+					double *big_delay) {*/
+int recv_message(char *buf, int size, int inv_trans, 
+			struct sipsak_delay *sd, struct sipsak_sr_time *srt,
+			struct sipsak_counter *count, struct sipsak_con_data *cd,
+			struct sipsak_regexp *reg) {
 	int ret = 0;
 	int sock = 0;
 	double tmp_delay;
@@ -328,7 +342,7 @@ int recv_message(char *buf, int size, int inv_trans, int *retryAfter,
 	unsigned int flen;
 #endif
 
-	sock = check_for_message(buf, size);
+	sock = check_for_message(buf, size, cd, srt, count, sd);
 	if (sock <= 1) {
 		return -1;
 	}
@@ -396,16 +410,16 @@ int recv_message(char *buf, int size, int inv_trans, int *retryAfter,
 #endif
 	if (ret > 0) {
 		*(buf+ ret) = '\0';
-		if (!inv_trans && (regexec(&proexp, rec, 0, 0, 0) != REG_NOERROR)) {
-			*retryAfter = SIP_T1;
+		if (!inv_trans && (regexec(&(reg->proexp), rec, 0, 0, 0) != REG_NOERROR)) {
+			sd->retryAfter = SIP_T1;
 		}
 		/* store the biggest delay if one occured */
-		if (delaytime->tv_sec != 0) {
-			tmp_delay = deltaT(delaytime, recvtime);
-			if (tmp_delay > *big_delay)
-				*big_delay = tmp_delay;
-			delaytime->tv_sec = 0;
-			delaytime->tv_usec = 0;
+		if (srt->delaytime.tv_sec != 0) {
+			tmp_delay = deltaT(&(srt->delaytime), &(srt->recvtime));
+			if (tmp_delay > sd->big_delay)
+				sd->big_delay = tmp_delay;
+			srt->delaytime.tv_sec = 0;
+			srt->delaytime.tv_usec = 0;
 		}
 #ifdef HAVE_INET_NTOP
 		if ((verbose > 2) && (getpeername(sock, (struct sockaddr *)&peer_adr, &psize) == 0) && (inet_ntop(peer_adr.sin_family, &peer_adr.sin_addr, &source_dot[0], INET_ADDRSTRLEN) != NULL)) {
@@ -429,8 +443,7 @@ int recv_message(char *buf, int size, int inv_trans, int *retryAfter,
 
 /* clears the given sockaddr, fills it with the given data and if a
  * socket is given connects the socket to the new target */
-int set_target(struct sockaddr_in *adr, unsigned long target, int port, int socket, int connected)
-{
+int set_target(struct sockaddr_in *adr, unsigned long target, int port, int socket, int connected) {
 	if (socket != -1 && transport != SIP_UDP_TRANSPORT && connected) {
 		if (shutdown(socket, SHUT_RDWR) != 0) {
 			perror("error while shutting down socket");
