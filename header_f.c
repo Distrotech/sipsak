@@ -247,6 +247,26 @@ void set_cl(char* mes, int contentlen) {
 	}
 }
 
+/* returns the content length from the message; in case of error it
+ * return -1 */
+int get_cl(char* mes) {
+	char *cl;
+
+	if ((cl=STRCASESTR(mes, CON_LEN_STR)) == NULL &&
+		(cl=STRCASESTR(mes, CON_LEN_SHORT_STR)) == NULL) {
+		if (verbose > 1)
+			printf("missing Content-Length in message\n");
+		return -1;
+	}
+	if (*cl == '\n') {
+		cl+=3;
+	}
+	else {
+		cl+=15;
+	}
+	return str_to_int(cl);
+}
+
 /* returns 1 if the rr_line contains the lr parameter
  * otherwise 0 */
 int find_lr_parameter(char *rr_line) {
@@ -559,4 +579,14 @@ void print_message_line(char *message)
 	else if (*(crlf - 1) == '\r')
 		crlf--;
 	printf("%.*s\n", (int)(crlf - message), message);
+}
+
+/* return pointer to the beginning of the message body */
+inline char* get_body(char *mes) {
+	char *cr;
+
+	if ((cr = strstr(mes, "\r\n\r\n")) != NULL) {
+		cr+=4;
+	}
+	return cr;
 }

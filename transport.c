@@ -64,6 +64,7 @@
 
 #include "exit_code.h"
 #include "helper.h"
+#include "header_f.h"
 
 #ifdef RAW_SUPPORT
 int rawsock;
@@ -318,6 +319,43 @@ int check_for_message(char *recv, int size, struct sipsak_con_data *cd,
 	return ret;
 }
 
+int complete_mes(char *mes, int size) {
+	int cl = 0, headers = 0, len = 0;
+	char *tmp = NULL;
+
+	cl = get_cl(mes);
+	printf("CL: %i\n", cl);
+	if (cl < 0){
+		/*FIXME: we did not found a CL header, so set a pointer where
+		 *       the next bytes should be appended */
+		printf("missing CL header; waiting for more bytes...\n");
+		return 0;
+	}
+	tmp = get_body(mes);
+	printf("body: '%s'\n", tmp);
+	headers = tmp - mes;
+	printf("length: %i, headers: %i\n", size, headers);
+	len = headers + cl;
+	if (len == size) {
+		printf("message is complete\n");
+		return 1;
+	}
+	else if (len > size) {
+		/*FIXME: we should set a pointer where the next bytes should be
+		 *       appended to the already received */
+		printf("waiting for more bytes...\n");
+		return 0;
+	}
+	else {
+		/* we received more then the sender claims to sent
+		 * for now we treat this as a complete message
+		 * FIXME: should we store the extra bytes in a buffer and
+		 *        truncate the message at the calculated length !? */
+		printf("received too much bytes...\n");
+		return 1;
+	}
+}
+
 /*int recv_message(char *buf, int size, int inv_trans, int *retryAfter,
 					struct timeval *delaytime, struct timeval *recvtime,
 					double *big_delay) {*/
@@ -392,7 +430,7 @@ int recv_message(char *buf, int size, int inv_trans,
 					printf("\n");
 #else
 				printf("\n");
-#endif
+#endif // HAVE_INET_NTOP
 				exit_code(3);
 			}
 			else {
@@ -407,11 +445,12 @@ int recv_message(char *buf, int size, int inv_trans,
 			return -2;
 		}
 	}
-#endif
+#endif // RAW_SUPPORT
 	if (ret > 0) {
 		*(buf+ ret) = '\0';
-		if (!inv_trans && (regexec(&(reg->proexp), rec, 0, 0, 0) != REG_NOERROR)) {
-			sd->retryAfter = SIP_T1;
+		if (transport != SIP_UDP_TRANSPORT) {
+			printf("checking message for completness...\n");
+			complete_mes(buf, ret);
 		}
 		/* store the biggest delay if one occured */
 		if (srt->delaytime.tv_sec != 0) {
@@ -431,7 +470,10 @@ int recv_message(char *buf, int size, int inv_trans,
 #else
 		if (trace == 0 && usrloc == 0)
 			printf(":\n");
-#endif
+#endif // HAVE_INET_NTOP
+		if (!inv_trans && (regexec(&(reg->proexp), buf, 0, 0, 0) != REG_NOERROR)) {
+			sd->retryAfter = SIP_T1;
+		}
 	}
 	else {
 		check_socket_error(sock, size);

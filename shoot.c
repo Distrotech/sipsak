@@ -793,7 +793,12 @@ void shoot(char *buf, int buff_size)
 	char buf2[BUFSIZE], buf3[BUFSIZE], lport_str[LPORT_STR_LEN];
 
 	/* delays.retryAfter = DEFAULT_TIMEOUT; */
-	delays.retryAfter = SIP_T1;
+	if (transport == SIP_UDP_TRANSPORT) {
+		delays.retryAfter = SIP_T1;
+	}
+	else {
+		delays.retryAfter = inv_final;
+	}
 	inv_trans = 0;
 	cseq_counter = 1;
 	usrlocstep = REG_REP;

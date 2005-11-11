@@ -34,6 +34,8 @@ void uri_replace(char *mes, char *uri);
 
 void set_cl(char* mes, int contentlen);
 
+int get_cl(char* mes);
+
 int find_lr_parameter(char *rr_line);
 
 void cpy_rr(char* src, char *dst, int route);
@@ -57,4 +59,6 @@ void new_branch(char *message);
 void new_transaction(char *message);
 
 void print_message_line(char *message);
+
+inline char* get_body(char *mes);
 #endif

@@ -145,8 +145,9 @@ void print_long_help() {
 		"  --timing                   print the timing informations at the end\n"
 		"  --symmetric                send and received on the same port\n"
 		"  --from=SIPURI              use the given uri as From in MESSAGE\n"
-		"  --invite-timeout=NUMBER    timeout multiplier for INVITE transactions\n"
-		"  --transport                use TCP instead of UDP transport\n"
+		"  --timeout-factor=NUMBER    timeout multiplier for INVITE transactions\n"
+		"                             and reliable transports (default: 64)\n"
+		"  --transport=STRING         specify transport to be used\n"
 		);
 	exit_code(0);
 }
@@ -210,7 +211,8 @@ void print_help() {
 		"  -S                use same port for receiving and sending\n"
 		"  -c SIPURI         use the given uri as From in MESSAGE\n"
 		"  -D NUMBER         timeout multiplier for INVITE transactions\n"
-		"  -E                use TCP instead of UDP as transport\n"
+		"                    and reliable transports (default: 64)\n"
+		"  -E STRING         specify transport to be used\n"
 		);
 		exit_code(0);
 }
@@ -269,8 +271,8 @@ int main(int argc, char *argv[])
 		{"timing", 0, 0, 'A'},
 		{"symmetric", 0, 0, 'S'},
 		{"from", 1, 0, 'c'},
-		{"invite-timeout", 1, 0, 'D'},
-		{"transport", 0, 0, 'E'},
+		{"timeout-factor", 1, 0, 'D'},
+		{"transport", 1, 0, 'E'},
 		{0, 0, 0, 0}
 	};
 #endif
@@ -297,9 +299,9 @@ int main(int argc, char *argv[])
 
 	/* lots of command line switches to handle*/
 #ifdef HAVE_GETOPT_LONG
-	while ((c=getopt_long(argc, argv, "a:Ab:B:c:C:dD:e:Ef:Fg:GhH:iIl:Lm:MnNo:O:p:P:q:r:Rs:St:Tu:UvVwW:x:Xz:", l_opts, &option_index)) != EOF){
+	while ((c=getopt_long(argc, argv, "a:Ab:B:c:C:dD:e:E:f:Fg:GhH:iIl:Lm:MnNo:O:p:P:q:r:Rs:St:Tu:UvVwW:x:Xz:", l_opts, &option_index)) != EOF){
 #else
-	while ((c=getopt(argc, argv, "a:Ab:B:c:C:dD:e:Ef:Fg:GhH:iIl:Lm:MnNo:O:p:P:q:r:Rs:St:Tu:UvVwW:x:z:")) != EOF){
+	while ((c=getopt(argc, argv, "a:Ab:B:c:C:dD:e:E:f:Fg:GhH:iIl:Lm:MnNo:O:p:P:q:r:Rs:St:Tu:UvVwW:x:z:")) != EOF){
 #endif
 		switch(c){
 			case 'a':
@@ -381,7 +383,24 @@ int main(int argc, char *argv[])
 				nameend=str_to_int(optarg);
 				break;
 			case 'E':
-				transport = SIP_TCP_TRANSPORT;
+				if (strlen(optarg) == 3 && 
+					STRNCASECMP(optarg, "udp", 3) == 0) {
+					transport = SIP_UDP_TRANSPORT;
+				}
+				else if (strlen(optarg) == 3 &&
+						STRNCASECMP(optarg, "tcp", 3) == 0) {
+					transport = SIP_TCP_TRANSPORT;
+				}
+				else if (strlen(optarg) == 3 &&
+						STRNCASECMP(optarg, "tls", 3) == 0) {
+					fprintf(stderr, "error: TLS is not supported yet, supported values: udp, tcp\n");
+					exit_code(2);
+					transport = SIP_TLS_TRANSPORT;
+				}
+				else {
+					fprintf(stderr, "error: unsupported transport '%s', supported values: udp, tcp\n", optarg);
+					exit_code(2);
+				}
 				break;
 			case 'F':
 				flood=1;
