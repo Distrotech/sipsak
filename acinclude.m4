@@ -44,6 +44,7 @@ AC_DEFUN([CHECK_LIB_CARES],
 	ares_libcall=NONE
 	ares_incdirs="/usr/include /usr/local/include"
 	ares_libdirs="/usr/lib /usr/local/lib"
+	ares_libexten=".so .dylib .a"
 
 	for dir in $ares_incdirs; do
 		try="$dir/ares_version.h"
@@ -54,12 +55,14 @@ AC_DEFUN([CHECK_LIB_CARES],
 	done
 
 	for dir in $ares_libdirs; do
-		try="$dir/libcares.so"
-		if test -f $try; then
-			ares_libdir=$dir;
-			ares_libcall=cares;
-			break;
-		fi
+		for extension in $ares_libexten; do
+			try="$dir/libcares$extension"
+			if test -f $try; then
+				ares_libdir=$dir;
+				ares_libcall=cares;
+				break;
+			fi
+		done
 	done
 
 	if test "$ares_incdir" = "NONE" || test "$ares_libdir" = "NONE"; then
