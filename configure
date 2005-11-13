@@ -311,7 +311,7 @@ ac_includes_default="\
 # include <unistd.h>
 #endif"
 
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS INSTALL_PROGRAM INSTALL_SCRIPT INSTALL_DATA CYGPATH_W PACKAGE VERSION ACLOCAL AUTOCONF AUTOMAKE AUTOHEADER MAKEINFO install_sh STRIP ac_ct_STRIP INSTALL_STRIP_PROGRAM mkdir_p AWK SET_MAKE am__leading_dot AMTAR am__tar am__untar MAINTAINER_MODE_TRUE MAINTAINER_MODE_FALSE MAINT CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT DEPDIR am__include am__quote AMDEP_TRUE AMDEP_FALSE AMDEPBACKSLASH CCDEPMODE am__fastdepCC_TRUE am__fastdepCC_FALSE DISTCC build build_cpu build_vendor build_os host host_cpu host_vendor host_os CPP EGREP LIBOBJS DISABLE_GNUTLS LIBGNUTLS_CONFIG LIBGNUTLS_CFLAGS LIBGNUTLS_LIBS LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS INSTALL_PROGRAM INSTALL_SCRIPT INSTALL_DATA CYGPATH_W PACKAGE VERSION ACLOCAL AUTOCONF AUTOMAKE AUTOHEADER MAKEINFO install_sh STRIP ac_ct_STRIP INSTALL_STRIP_PROGRAM mkdir_p AWK SET_MAKE am__leading_dot AMTAR am__tar am__untar MAINTAINER_MODE_TRUE MAINTAINER_MODE_FALSE MAINT CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT DEPDIR am__include am__quote AMDEP_TRUE AMDEP_FALSE AMDEPBACKSLASH CCDEPMODE am__fastdepCC_TRUE am__fastdepCC_FALSE DISTCC build build_cpu build_vendor build_os host host_cpu host_vendor host_os CPP EGREP LIBOBJS DISABLE_GNUTLS LIBGNUTLS_CONFIG LIBGNUTLS_CFLAGS LIBGNUTLS_LIBS SIPSAK_HAVE_ARES LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -5424,6 +5424,51 @@ fi
 fi
 
 
+	echo "$as_me:$LINENO: checking for cares" >&5
+echo $ECHO_N "checking for cares... $ECHO_C" >&6
+
+	ares_incidr=NONE
+	ares_libdir=NONE
+	ares_libcall=NONE
+	ares_incdirs="/usr/include /usr/local/include"
+	ares_libdirs="/usr/lib /usr/local/lib"
+
+	for dir in $ares_incdirs; do
+		try="$dir/ares_version.h"
+		if test -f $try; then
+			ares_incdir=$dir;
+			break;
+		fi
+	done
+
+	for dir in $ares_libdirs; do
+		try="$dir/libcares.so"
+		if test -f $try; then
+			ares_libdir=$dir;
+			ares_libcall=cares;
+			break;
+		fi
+	done
+
+	if test "$ares_incdir" = "NONE" || test "$ares_libdir" = "NONE"; then
+		echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+	else
+		echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_CARES_H 1
+_ACEOF
+
+		LIBS="$LIBS -L$ares_libdir -l$ares_libcall"
+		CFLAGS="$CFLAGS -I$ares_incdir"
+		SIPSAK_HAVE_ARES="1"
+
+	fi
+
+if test "X$SIPSAK_HAVE_ARES" == "X"; then
+
 	echo "$as_me:$LINENO: checking for libruli" >&5
 echo $ECHO_N "checking for libruli... $ECHO_C" >&6
 
@@ -5463,6 +5508,7 @@ _ACEOF
 		CFLAGS="$CFLAGS -I$ruli_incdir"
 	fi
 
+fi
 
 
 	# Check for T1 timer value
@@ -6186,6 +6232,7 @@ s,@DISABLE_GNUTLS@,$DISABLE_GNUTLS,;t t
 s,@LIBGNUTLS_CONFIG@,$LIBGNUTLS_CONFIG,;t t
 s,@LIBGNUTLS_CFLAGS@,$LIBGNUTLS_CFLAGS,;t t
 s,@LIBGNUTLS_LIBS@,$LIBGNUTLS_LIBS,;t t
+s,@SIPSAK_HAVE_ARES@,$SIPSAK_HAVE_ARES,;t t
 s,@LTLIBOBJS@,$LTLIBOBJS,;t t
 CEOF
 

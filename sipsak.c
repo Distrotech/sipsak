@@ -631,8 +631,10 @@ int main(int argc, char *argv[])
 #else
 				printf(", INTERNAL_MD5");
 #endif
-#ifdef HAVE_RULI_H
-				printf(", SRV_SUPPORT");
+#ifdef HAVE_CARES_H
+				printf(", SRV_SUPPORT(ARES)");
+#elif HAVE_RULI_H
+				printf(", SRV_SUPPORT(RULI)");
 #endif
 #ifdef HAVE_STRCASESTR
 				printf(", STR_CASE_INSENSITIVE");

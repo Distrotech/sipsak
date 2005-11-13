@@ -46,8 +46,8 @@
 # include <errno.h>
 #endif
 #ifdef HAVE_CARES_H
-# include <ares.h>
 # include <arpa/nameser.h>
+# include <ares.h>
 int caport;
 unsigned long caadr;
 char *ca_tmpname;
@@ -125,9 +125,16 @@ unsigned long getaddress(char *host) {
 	return l;
 }
 
+/* Finds the SRV records for the given host. It returns the target IP
+ * address and fills the port and transport if a suitable SRV record
+ * exists. Otherwise it returns 0. The function follows 3263: first
+ * TLS, then TCP and finally UDP. */
 unsigned long getsrvadr(char *host, int *port, int *transport) {
 	unsigned long adr = 0;
+
+#ifdef HAVE_CARES_H || HAVE_RULI_H
 	int srvport = 5060;
+
 #ifdef HAVE_CARES_H
 	int status;
 	int optmask = ARES_OPT_FLAGS;
@@ -149,7 +156,7 @@ unsigned long getsrvadr(char *host, int *port, int *transport) {
 	if (adr != 0) {
 		*transport = SIP_TLS_TRANSPORT;
 		if (verbose > 1)
-			printf("using SRV record: %s.%s\n", SRV_SIP_TLS, host);
+			printf("using SRV record: %s.%s:%i\n", SRV_SIP_TLS, host, srvport);
 		printf("TLS transport not yet supported\n");
 		exit_code(2);
 	}
@@ -160,7 +167,7 @@ unsigned long getsrvadr(char *host, int *port, int *transport) {
 		if (adr != 0) {
 			*transport = SIP_TCP_TRANSPORT;
 			if (verbose > 1)
-				printf("using SRV record: %s.%s\n", SRV_SIP_TCP, host);
+				printf("using SRV record: %s.%s:%i\n", SRV_SIP_TCP, host, srvport);
 		}
 		else {
 #endif
@@ -168,7 +175,7 @@ unsigned long getsrvadr(char *host, int *port, int *transport) {
 			if (adr != 0) {
 				*transport = SIP_UDP_TRANSPORT;
 				if (verbose > 1)
-					printf("using SRV record: %s.%s\n", SRV_SIP_UDP, host);
+					printf("using SRV record: %s.%s:%i\n", SRV_SIP_UDP, host, srvport);
 			}
 #ifdef WITH_TCP_TRANSP
 		}
@@ -176,10 +183,13 @@ unsigned long getsrvadr(char *host, int *port, int *transport) {
 #ifdef WITH_TLS_TRANSP
 	}
 #endif
+
 #ifdef HAVE_CARES_H
 	ares_destroy(channel);
 #endif
+
 	*port = srvport;
+#endif // HAVE_CARES_H || HAVE_RULI_H
 	return adr;
 }
 
@@ -190,7 +200,9 @@ static const unsigned char *parse_rr(const unsigned char *aptr, const unsigned c
 	int status, type, dnsclass, dlen;
 	struct in_addr addr;
 
+#ifdef DEBUG
 	printf("ca_tmpname: %s\n", ca_tmpname);
+#endif
 	status = ares_expand_name(aptr, abuf, alen, &name, &len);
 	if (status != ARES_SUCCESS) {
 		printf("error: failed to expand query name\n");
@@ -226,13 +238,17 @@ static const unsigned char *parse_rr(const unsigned char *aptr, const unsigned c
 	if (type == CARES_TYPE_SRV) {
 		free(name);
 		caport = DNS__16BIT(aptr + 4);
+#ifdef DEBUG
 		printf("caport: %i\n", caport);
+#endif
 		status = ares_expand_name(aptr + 6, abuf, alen, &name, &len);
 		if (status != ARES_SUCCESS) {
 			printf("error: failed to expand SRV name\n");
 			return NULL;
 		}
+#ifdef DEBUG
 		printf("SRV name: %s\n", name);
+#endif
 		if (is_ip(name)) {
 			caadr = inet_addr(name);
 			free(name);
@@ -267,7 +283,9 @@ static const unsigned char *skip_rr(const unsigned char *aptr, const unsigned ch
 	long len;
 	char *name;
 
+#ifdef DEBUG
 	printf("skipping rr section...\n");
+#endif
 	status = ares_expand_name(aptr, abuf, alen, &name, &len);
 	aptr += len;
 	dlen = DNS_RR_LEN(aptr);
@@ -282,7 +300,9 @@ static const unsigned char *skip_query(const unsigned char *aptr, const unsigned
 	long len;
 	char *name;
 
+#ifdef DEBUG
 	printf("skipping query section...\n");
+#endif
 	status = ares_expand_name(aptr, abuf, alen, &name, &len);
 	aptr += len;
 	aptr += QFIXEDSZ;
@@ -295,12 +315,16 @@ static void cares_callback(void *arg, int status, unsigned char *abuf, int alen)
 	unsigned int ancount, nscount, arcount;
 	const unsigned char *aptr;
 
+#ifdef DEBUG
 	printf("cares_callback: status=%i, alen=%i\n", status, alen);
+#endif
 	ancount = DNS_HEADER_ANCOUNT(abuf);
 	nscount = DNS_HEADER_NSCOUNT(abuf);
 	arcount = DNS_HEADER_ARCOUNT(abuf);
 	
+#ifdef DEBUG
 	printf("ancount: %i, nscount: %i, arcount: %i\n", ancount, nscount, arcount);
+#endif
 
 	if (status != ARES_SUCCESS) {
 		printf("ares failed: %s\n", ares_strerror(status));
@@ -328,10 +352,68 @@ static void cares_callback(void *arg, int status, unsigned char *abuf, int alen)
 		}
 	}
 }
+
+inline unsigned long srv_ares(char *host, int *port, char *srv) {
+	int nfds, count, srvh_len;
+	char *srvh;
+	fd_set read_fds, write_fds;
+	struct timeval *tvp, tv;
+
+	caport = 0;
+	caadr = 0;
+	ca_tmpname = NULL;
+#ifdef DEBUG
+	printf("!!! ARES query !!!\n");
+#endif
+
+	srvh_len = strlen(host) + strlen(srv) + 2;
+	srvh = malloc(srvh_len);
+	if (srvh == NULL) {
+		printf("error: failed to allocate memory (%i) for ares query\n", srvh_len);
+		exit_code(2);
+	}
+	memset(srvh, 0, srvh_len);
+	strncpy(srvh, srv, strlen(srv));
+	memcpy(srvh + strlen(srv), ".", 1);
+	strcpy(srvh + strlen(srv) + 1, host);
+#ifdef DEBUG
+	printf("hostname: '%s', len: %i\n", srvh, srvh_len);
+#endif
+
+	ares_query(channel, srvh, CARES_CLASS_C_IN, CARES_TYPE_SRV, cares_callback, (char *) NULL);
+#ifdef DEBUG
+	printf("after ares_query\n");
+#endif
+	/* wait for query to complete */
+	while (1) {
+		FD_ZERO(&read_fds);
+		FD_ZERO(&write_fds);
+		nfds = ares_fds(channel, &read_fds, &write_fds);
+		if (nfds == 0)
+			break;
+		tvp = ares_timeout(channel, NULL, &tv);
+		count = select(nfds, &read_fds, &write_fds, NULL, tvp);
+		if (count < 0 && errno != EINVAL) {
+			perror("ares select");
+			exit_code(2);
+		}
+		ares_process(channel, &read_fds, &write_fds);
+	}
+#ifdef DEBUG
+	printf("end of while\n");
+#endif
+	*port = caport;
+	if (caadr == 0 && ca_tmpname != NULL) {
+		caadr = getaddress(ca_tmpname);
+	}
+	if (ca_tmpname != NULL)
+		free(ca_tmpname);
+	return caadr;
+}
 #endif // HAVE_CARES_H
 
-unsigned long getsrvaddress(char *host, int *port, char *srv) {
-#ifdef HAVE_RULI_H_FOO
+#ifdef HAVE_RULI_H
+inline unsigned long srv_ruli(char *host, int *port, char *srv) {
 	int srv_code;
 	int ruli_opts = RULI_RES_OPT_SEARCH | RULI_RES_OPT_SRV_NOINET6 | RULI_RES_OPT_SRV_NOSORT6 | RULI_RES_OPT_SRV_NOFALL;
 #ifdef RULI_RES_OPT_SRV_CNAME
@@ -390,54 +472,14 @@ unsigned long getsrvaddress(char *host, int *port, char *srv) {
 	*port = entry->port;
 	ruli_addr_t *addr = (ruli_addr_t *) ruli_list_get(addr_list, 0);
 	return addr->addr.ipv4.s_addr;
+}
+#endif // HAVE_RULI_H
+
+unsigned long getsrvaddress(char *host, int *port, char *srv) {
+#ifdef HAVE_RULI_H
+	return srv_ruli(host, port, srv);
 #elif HAVE_CARES_H // HAVE_RULI_H
-	int nfds, count, srvh_len;
-	char *srvh;
-	fd_set read_fds, write_fds;
-	struct timeval *tvp, tv;
-
-	caport = 0;
-	caadr = 0;
-	ca_tmpname = NULL;
-	printf("!!! ARES query !!!\n");
-
-	srvh_len = strlen(host) + strlen(srv) + 2;
-	srvh = malloc(srvh_len);
-	if (srvh == NULL) {
-		printf("error: failed to allocate memory (%i) for ares query\n", srvh_len);
-		exit_code(2);
-	}
-	memset(srvh, 0, srvh_len);
-	strncpy(srvh, srv, strlen(srv));
-	memcpy(srvh + strlen(srv), ".", 1);
-	strcpy(srvh + strlen(srv) + 1, host);
-	printf("hostname: '%s', len: %i\n", srvh, srvh_len);
-
-	ares_query(channel, srvh, CARES_CLASS_C_IN, CARES_TYPE_SRV, cares_callback, (char *) NULL);
-	printf("after ares_query\n");
-	/* wait for query to complete */
-	while (1) {
-		FD_ZERO(&read_fds);
-		FD_ZERO(&write_fds);
-		nfds = ares_fds(channel, &read_fds, &write_fds);
-		if (nfds == 0)
-			break;
-		tvp = ares_timeout(channel, NULL, &tv);
-		count = select(nfds, &read_fds, &write_fds, NULL, tvp);
-		if (count < 0 && errno != EINVAL) {
-			perror("ares select");
-			exit_code(2);
-		}
-		ares_process(channel, &read_fds, &write_fds);
-	}
-	printf("end of while\n");
-	*port = caport;
-	if (caadr == 0 && ca_tmpname != NULL) {
-		caadr = getaddress(ca_tmpname);
-	}
-	if (ca_tmpname != NULL)
-		free(ca_tmpname);
-	return caadr;
+	return srv_ares(host, port, srv);
 #else // HAVE_CARES_H
 	return 0;
 #endif

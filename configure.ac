@@ -64,7 +64,10 @@ if test "X$LIBGNUTLS_LIBS" == "X";then
   )
 fi
 
-CHECK_LIB_RULI
+CHECK_LIB_CARES
+if test "X$SIPSAK_HAVE_ARES" == "X"; then
+  CHECK_LIB_RULI
+fi
 
 SIPSAK_TIMER
 
