@@ -568,6 +568,8 @@ int main(int argc, char *argv[])
 				}
 				if (!rport && !address) {
 					address = getsrvadr(domainname, &rport, &tsp);
+					if (tsp != 0)
+						transport = tsp;
 				}
 				if (!address)
 					address = getaddress(domainname);

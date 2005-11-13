@@ -45,9 +45,43 @@
 #ifdef HAVE_ERRNO_H
 # include <errno.h>
 #endif
+#ifdef HAVE_CARES_H
+# include <ares.h>
+# include <arpa/nameser.h>
+int caport;
+unsigned long caadr;
+char *ca_tmpname;
+ares_channel channel;
+#endif
 
 #include "helper.h"
 #include "exit_code.h"
+
+/* returns 1 if the string an IP address otherwise zero */
+int is_ip(char *str) {
+	int i = 0;
+	int dotcount = 0;
+
+	/*try understanding if this is a valid ip address
+	we are skipping the values of the octets specified here.
+	for instance, this code will allow 952.0.320.567 through*/
+	while (*str != '\0')
+	{
+		for (i = 0; i < 3; i++, str++)
+			if (isdigit((int)*str) == 0)
+				break;
+		if (*str != '.')
+			break;
+		str++;
+		dotcount++;
+	}
+
+	/* three dots with upto three digits in before, between and after ? */
+	if (dotcount == 3 && i > 0 && i <= 3)
+		return 1;
+	else
+		return 0;
+}
 
 /* take either a dot.decimal string of ip address or a 
 domain name and returns a NETWORK ordered long int containing
@@ -63,28 +97,10 @@ contact: farhan@hotfoon.com
 */
 
 unsigned long getaddress(char *host) {
-	int i=0;
-	int dotcount=0;
-	char *p = host;
 	struct hostent* pent;
 	long l, *lp;
 
-	/*try understanding if this is a valid ip address
-	we are skipping the values of the octets specified here.
-	for instance, this code will allow 952.0.320.567 through*/
-	while (*p != '\0')
-	{
-		for (i = 0; i < 3; i++, p++)
-			if (isdigit((int)*p) == 0)
-				break;
-		if (*p != '.')
-			break;
-		p++;
-		dotcount++;
-	}
-
-	/* three dots with upto three digits in before, between and after ? */
-	if (dotcount == 3 && i > 0 && i <= 3)
+	if (is_ip(host))
 		return inet_addr(host);
 
 	/* try the system's own resolution mechanism for dns lookup:
@@ -112,6 +128,21 @@ unsigned long getaddress(char *host) {
 unsigned long getsrvadr(char *host, int *port, int *transport) {
 	unsigned long adr = 0;
 	int srvport = 5060;
+#ifdef HAVE_CARES_H
+	int status;
+	int optmask = ARES_OPT_FLAGS;
+	struct ares_options options;
+
+	options.flags = ARES_FLAG_NOCHECKRESP;
+	options.servers = NULL;
+	options.nservers = 0;
+
+	status = ares_init_options(&channel, &options, optmask);
+	if (status != ARES_SUCCESS) {
+		printf("error: failed to initialize ares\n");
+		exit_code(2);
+	}
+#endif
 
 #ifdef WITH_TLS_TRANSP
 	adr = getsrvaddress(host, &srvport, SRV_SIP_TLS);
@@ -119,7 +150,7 @@ unsigned long getsrvadr(char *host, int *port, int *transport) {
 		*transport = SIP_TLS_TRANSPORT;
 		if (verbose > 1)
 			printf("using SRV record: %s.%s\n", SRV_SIP_TLS, host);
-		printf("TLS trnasport not yet supported\n");
+		printf("TLS transport not yet supported\n");
 		exit_code(2);
 	}
 	else {
@@ -145,12 +176,162 @@ unsigned long getsrvadr(char *host, int *port, int *transport) {
 #ifdef WITH_TLS_TRANSP
 	}
 #endif
+#ifdef HAVE_CARES_H
+	ares_destroy(channel);
+#endif
 	*port = srvport;
 	return adr;
 }
 
+#ifdef HAVE_CARES_H
+static const unsigned char *parse_rr(const unsigned char *aptr, const unsigned char *abuf, int alen) {
+	char *name;
+	long len;
+	int status, type, dnsclass, dlen;
+	struct in_addr addr;
+
+	printf("ca_tmpname: %s\n", ca_tmpname);
+	status = ares_expand_name(aptr, abuf, alen, &name, &len);
+	if (status != ARES_SUCCESS) {
+		printf("error: failed to expand query name\n");
+		exit_code(2);
+	}
+	aptr += len;
+	if (aptr + RRFIXEDSZ > abuf + alen) {
+		printf("error: not enough data in DNS answer 1\n");
+		free(name);
+		return NULL;
+	}
+	type = DNS_RR_TYPE(aptr);
+	dnsclass = DNS_RR_CLASS(aptr);
+	dlen = DNS_RR_LEN(aptr);
+	aptr += RRFIXEDSZ;
+	if (aptr + dlen > abuf + alen) {
+		printf("error: not enough data in DNS answer 2\n");
+		free(name);
+		return NULL;
+	}
+	if (dnsclass != CARES_CLASS_C_IN) {
+		printf("error: unsupported dnsclass (%i) in DNS answer\n", dnsclass);
+		free(name);
+		return NULL;
+	}
+	if ((ca_tmpname == NULL && type != CARES_TYPE_SRV) ||
+		(ca_tmpname != NULL && 
+		 	(type != CARES_TYPE_A && type != CARES_TYPE_CNAME))) {
+		printf("error: unsupported DNS response type (%i)\n", type);
+		free(name);
+		return NULL;
+	}
+	if (type == CARES_TYPE_SRV) {
+		free(name);
+		caport = DNS__16BIT(aptr + 4);
+		printf("caport: %i\n", caport);
+		status = ares_expand_name(aptr + 6, abuf, alen, &name, &len);
+		if (status != ARES_SUCCESS) {
+			printf("error: failed to expand SRV name\n");
+			return NULL;
+		}
+		printf("SRV name: %s\n", name);
+		if (is_ip(name)) {
+			caadr = inet_addr(name);
+			free(name);
+		}
+		else {
+			ca_tmpname = name;
+		}
+	}
+	else if (type == CARES_TYPE_CNAME) {
+		if (STRNCASECMP(ca_tmpname, name, strlen(ca_tmpname)) == 0) {
+			ca_tmpname = malloc(strlen(name));
+			if (ca_tmpname == NULL) {
+				printf("error: failed to allocate memory\n");
+				exit_code(2);
+			}
+			strcpy(ca_tmpname, name);
+		}
+		free(name);
+	}
+	else if (type == CARES_TYPE_A) {
+		if (dlen == 4 && STRNCASECMP(ca_tmpname, name, strlen(ca_tmpname)) == 0) {
+			memcpy(&addr, aptr, sizeof(struct in_addr));
+			caadr = addr.s_addr;
+		}
+		free(name);
+	}
+	return aptr + dlen;
+}
+
+static const unsigned char *skip_rr(const unsigned char *aptr, const unsigned char *abuf, int alen) {
+	int status, dlen;
+	long len;
+	char *name;
+
+	printf("skipping rr section...\n");
+	status = ares_expand_name(aptr, abuf, alen, &name, &len);
+	aptr += len;
+	dlen = DNS_RR_LEN(aptr);
+	aptr += RRFIXEDSZ;
+	aptr += dlen;
+	free(name);
+	return aptr;
+}
+
+static const unsigned char *skip_query(const unsigned char *aptr, const unsigned char *abuf, int alen) {
+	int status;
+	long len;
+	char *name;
+
+	printf("skipping query section...\n");
+	status = ares_expand_name(aptr, abuf, alen, &name, &len);
+	aptr += len;
+	aptr += QFIXEDSZ;
+	free(name);
+	return aptr;
+}
+
+static void cares_callback(void *arg, int status, unsigned char *abuf, int alen) {
+	int i;
+	unsigned int ancount, nscount, arcount;
+	const unsigned char *aptr;
+
+	printf("cares_callback: status=%i, alen=%i\n", status, alen);
+	ancount = DNS_HEADER_ANCOUNT(abuf);
+	nscount = DNS_HEADER_NSCOUNT(abuf);
+	arcount = DNS_HEADER_ARCOUNT(abuf);
+	
+	printf("ancount: %i, nscount: %i, arcount: %i\n", ancount, nscount, arcount);
+
+	if (status != ARES_SUCCESS) {
+		printf("ares failed: %s\n", ares_strerror(status));
+		return;
+	}
+	/* safety check */
+	if (alen < HFIXEDSZ)
+		return;
+	aptr = abuf + HFIXEDSZ;
+
+	aptr = skip_query(aptr, abuf, alen);
+
+	for (i = 0; i < ancount && caadr == 0; i++) {
+		if (ca_tmpname == NULL)
+			aptr = parse_rr(aptr, abuf, alen);
+		else
+			aptr = skip_rr(aptr, abuf, alen);
+	}
+	if (caadr == 0) {
+		for (i = 0; i < nscount; i++) {
+			aptr = skip_rr(aptr, abuf, alen);
+		}
+		for (i = 0; i < arcount && caadr == 0; i++) {
+			aptr = parse_rr(aptr, abuf, alen);
+		}
+	}
+}
+#endif // HAVE_CARES_H
+
 unsigned long getsrvaddress(char *host, int *port, char *srv) {
-#ifdef HAVE_RULI_H
+#ifdef HAVE_RULI_H_FOO
 	int srv_code;
 	int ruli_opts = RULI_RES_OPT_SEARCH | RULI_RES_OPT_SRV_NOINET6 | RULI_RES_OPT_SRV_NOSORT6 | RULI_RES_OPT_SRV_NOFALL;
 #ifdef RULI_RES_OPT_SRV_CNAME
@@ -209,9 +390,57 @@ unsigned long getsrvaddress(char *host, int *port, char *srv) {
 	*port = entry->port;
 	ruli_addr_t *addr = (ruli_addr_t *) ruli_list_get(addr_list, 0);
 	return addr->addr.ipv4.s_addr;
-#else
+#elif HAVE_CARES_H // HAVE_RULI_H
+	int nfds, count, srvh_len;
+	char *srvh;
+	fd_set read_fds, write_fds;
+	struct timeval *tvp, tv;
+
+	caport = 0;
+	caadr = 0;
+	ca_tmpname = NULL;
+	printf("!!! ARES query !!!\n");
+
+	srvh_len = strlen(host) + strlen(srv) + 2;
+	srvh = malloc(srvh_len);
+	if (srvh == NULL) {
+		printf("error: failed to allocate memory (%i) for ares query\n", srvh_len);
+		exit_code(2);
+	}
+	memset(srvh, 0, srvh_len);
+	strncpy(srvh, srv, strlen(srv));
+	memcpy(srvh + strlen(srv), ".", 1);
+	strcpy(srvh + strlen(srv) + 1, host);
+	printf("hostname: '%s', len: %i\n", srvh, srvh_len);
+
+	ares_query(channel, srvh, CARES_CLASS_C_IN, CARES_TYPE_SRV, cares_callback, (char *) NULL);
+	printf("after ares_query\n");
+	/* wait for query to complete */
+	while (1) {
+		FD_ZERO(&read_fds);
+		FD_ZERO(&write_fds);
+		nfds = ares_fds(channel, &read_fds, &write_fds);
+		if (nfds == 0)
+			break;
+		tvp = ares_timeout(channel, NULL, &tv);
+		count = select(nfds, &read_fds, &write_fds, NULL, tvp);
+		if (count < 0 && errno != EINVAL) {
+			perror("ares select");
+			exit_code(2);
+		}
+		ares_process(channel, &read_fds, &write_fds);
+	}
+	printf("end of while\n");
+	*port = caport;
+	if (caadr == 0 && ca_tmpname != NULL) {
+		caadr = getaddress(ca_tmpname);
+	}
+	if (ca_tmpname != NULL)
+		free(ca_tmpname);
+	return caadr;
+#else // HAVE_CARES_H
 	return 0;
-#endif // HAVE_RULI_H
+#endif
 }
 
 /* because the full qualified domain name is needed by many other
