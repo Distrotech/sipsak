@@ -324,8 +324,8 @@ int complete_mes(char *mes, int size) {
 	char *tmp = NULL;
 
 	cl = get_cl(mes);
-	cl += 10;
 #ifdef DEBUG
+	//cl += 10;
 	printf("CL: %i\n", cl);
 #endif
 	if (cl < 0){

@@ -221,7 +221,8 @@ int main(int argc, char *argv[])
 {
 	FILE	*pf;
 	char	buff[BUFSIZE];
-	int		c, i, port, tsp;
+	int		c, i, port;
+	unsigned int tsp;
 	char	*scheme, *user, *host, *backup;
 	pid_t 	pid;
 	struct 	timespec ts;
@@ -286,7 +287,8 @@ int main(int argc, char *argv[])
 	con_dis=auth_username=from_uri = NULL;
 	scheme = user = host = backup = req = rep = rec = NULL;
 	re = NULL;
-	address=transport=tsp = 0;
+	address= 0;
+	transport=tsp = 0;
 	rport = port = 0;
 	expires_t = USRLOC_EXP_DEF;
 	inv_final = 64 * SIP_T1;
@@ -491,7 +493,8 @@ int main(int argc, char *argv[])
 				}
 				if (is_ip(host)) {
 					address = getaddress(host);
-					transport = SIP_UDP_TRANSPORT;
+					if (transport == 0)
+						transport = SIP_UDP_TRANSPORT;
 				}
 				else {
 					if (!rport) {
@@ -572,7 +575,8 @@ int main(int argc, char *argv[])
 				}
 				if (is_ip(domainname)) {
 					address = getaddress(domainname);
-					transport = SIP_UDP_TRANSPORT;
+					if (transport == 0)
+						transport = SIP_UDP_TRANSPORT;
 				}
 				else {
 					if (!rport && !address) {

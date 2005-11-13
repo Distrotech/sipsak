@@ -52,6 +52,12 @@ int caport;
 unsigned long caadr;
 char *ca_tmpname;
 ares_channel channel;
+
+# ifndef RRFIXEDSZ
+#  define RRFIXEDSZ NS_RRFIXEDSZ
+#  define QFIXEDSZ  NS_QFIXEDSZ
+#  define HFIXEDSZ  NS_HFIXEDSZ
+# endif
 #endif
 
 #include "helper.h"
@@ -421,7 +427,7 @@ unsigned long getsrvaddress(char *host, int *port, char *srv) {
  * address and fills the port and transport if a suitable SRV record
  * exists. Otherwise it returns 0. The function follows 3263: first
  * TLS, then TCP and finally UDP. */
-unsigned long getsrvadr(char *host, int *port, int *transport) {
+unsigned long getsrvadr(char *host, int *port, unsigned int *transport) {
 	unsigned long adr = 0;
 
 #ifdef HAVE_SRV
@@ -540,7 +546,7 @@ void get_fqdn(){
 		}
 	}
 	else {
-		fprintf(stderr, "error: cannot resolve hostname: %s\n", hname);
+		fprintf(stderr, "error: cannot resolve local hostname: %s\n", hname);
 		exit_code(2);
 	}
 	if ((strchr(fqdn, '.'))==NULL) {
