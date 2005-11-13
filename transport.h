@@ -52,6 +52,8 @@ struct sipsak_con_data {
 	int dontsend;
 	int dontrecv;
 	int connected;
+	char *buf_tmp;
+	int buf_tmp_size;
 };
 
 struct sipsak_counter {

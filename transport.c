@@ -324,7 +324,10 @@ int complete_mes(char *mes, int size) {
 	char *tmp = NULL;
 
 	cl = get_cl(mes);
+	cl += 10;
+#ifdef DEBUG
 	printf("CL: %i\n", cl);
+#endif
 	if (cl < 0){
 		/*FIXME: we did not found a CL header, so set a pointer where
 		 *       the next bytes should be appended */
@@ -332,9 +335,13 @@ int complete_mes(char *mes, int size) {
 		return 0;
 	}
 	tmp = get_body(mes);
+#ifdef DEBUG
 	printf("body: '%s'\n", tmp);
+#endif
 	headers = tmp - mes;
+#ifdef DEBUG
 	printf("length: %i, headers: %i\n", size, headers);
+#endif
 	len = headers + cl;
 	if (len == size) {
 		printf("message is complete\n");
@@ -380,6 +387,10 @@ int recv_message(char *buf, int size, int inv_trans,
 	unsigned int flen;
 #endif
 
+	if (cd->buf_tmp) {
+		buf = cd->buf_tmp;
+		size = size - cd->buf_tmp_size;
+	}
 	sock = check_for_message(buf, size, cd, srt, count, sd);
 	if (sock <= 1) {
 		return -1;
@@ -449,8 +460,24 @@ int recv_message(char *buf, int size, int inv_trans,
 	if (ret > 0) {
 		*(buf+ ret) = '\0';
 		if (transport != SIP_UDP_TRANSPORT) {
-			printf("checking message for completness...\n");
-			complete_mes(buf, ret);
+			printf("\nchecking message for completness...\n");
+			if (complete_mes(buf, ret) == 1) {
+				cd->buf_tmp = NULL;
+				ret += cd->buf_tmp_size;
+				cd->buf_tmp_size = 0;
+			}
+			else {
+				if (cd->buf_tmp) {
+					cd->buf_tmp += ret;
+					cd->buf_tmp_size += ret;
+				}
+				else {
+					cd->buf_tmp = buf + ret;
+					cd->buf_tmp_size = ret;
+				}
+				cd->dontsend = 1;
+				ret = -1;
+			}
 		}
 		/* store the biggest delay if one occured */
 		if (srt->delaytime.tv_sec != 0) {
@@ -471,7 +498,7 @@ int recv_message(char *buf, int size, int inv_trans,
 		if (trace == 0 && usrloc == 0)
 			printf(":\n");
 #endif // HAVE_INET_NTOP
-		if (!inv_trans && (regexec(&(reg->proexp), buf, 0, 0, 0) != REG_NOERROR)) {
+		if (!inv_trans && ret > 0 && (regexec(&(reg->proexp), buf, 0, 0, 0) != REG_NOERROR)) {
 			sd->retryAfter = SIP_T1;
 		}
 	}

@@ -816,6 +816,8 @@ void shoot(char *buf, int buff_size)
 
 	cdata.csock = cdata.usock = -1;
 	cdata.connected = 0;
+	cdata.buf_tmp = NULL;
+	cdata.buf_tmp_size = 0;
 
 	memset(&(times.sendtime), 0, sizeof(times.sendtime));
 	memset(&(times.recvtime), 0, sizeof(times.recvtime));

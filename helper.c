@@ -125,74 +125,6 @@ unsigned long getaddress(char *host) {
 	return l;
 }
 
-/* Finds the SRV records for the given host. It returns the target IP
- * address and fills the port and transport if a suitable SRV record
- * exists. Otherwise it returns 0. The function follows 3263: first
- * TLS, then TCP and finally UDP. */
-unsigned long getsrvadr(char *host, int *port, int *transport) {
-	unsigned long adr = 0;
-
-#ifdef HAVE_CARES_H || HAVE_RULI_H
-	int srvport = 5060;
-
-#ifdef HAVE_CARES_H
-	int status;
-	int optmask = ARES_OPT_FLAGS;
-	struct ares_options options;
-
-	options.flags = ARES_FLAG_NOCHECKRESP;
-	options.servers = NULL;
-	options.nservers = 0;
-
-	status = ares_init_options(&channel, &options, optmask);
-	if (status != ARES_SUCCESS) {
-		printf("error: failed to initialize ares\n");
-		exit_code(2);
-	}
-#endif
-
-#ifdef WITH_TLS_TRANSP
-	adr = getsrvaddress(host, &srvport, SRV_SIP_TLS);
-	if (adr != 0) {
-		*transport = SIP_TLS_TRANSPORT;
-		if (verbose > 1)
-			printf("using SRV record: %s.%s:%i\n", SRV_SIP_TLS, host, srvport);
-		printf("TLS transport not yet supported\n");
-		exit_code(2);
-	}
-	else {
-#endif
-#ifdef WITH_TCP_TRANSP
-		adr = getsrvaddress(host, &srvport, SRV_SIP_TCP);
-		if (adr != 0) {
-			*transport = SIP_TCP_TRANSPORT;
-			if (verbose > 1)
-				printf("using SRV record: %s.%s:%i\n", SRV_SIP_TCP, host, srvport);
-		}
-		else {
-#endif
-			adr = getsrvaddress(host, &srvport, SRV_SIP_UDP);
-			if (adr != 0) {
-				*transport = SIP_UDP_TRANSPORT;
-				if (verbose > 1)
-					printf("using SRV record: %s.%s:%i\n", SRV_SIP_UDP, host, srvport);
-			}
-#ifdef WITH_TCP_TRANSP
-		}
-#endif
-#ifdef WITH_TLS_TRANSP
-	}
-#endif
-
-#ifdef HAVE_CARES_H
-	ares_destroy(channel);
-#endif
-
-	*port = srvport;
-#endif // HAVE_CARES_H || HAVE_RULI_H
-	return adr;
-}
-
 #ifdef HAVE_CARES_H
 static const unsigned char *parse_rr(const unsigned char *aptr, const unsigned char *abuf, int alen) {
 	char *name;
@@ -483,6 +415,70 @@ unsigned long getsrvaddress(char *host, int *port, char *srv) {
 #else // HAVE_CARES_H
 	return 0;
 #endif
+}
+
+/* Finds the SRV records for the given host. It returns the target IP
+ * address and fills the port and transport if a suitable SRV record
+ * exists. Otherwise it returns 0. The function follows 3263: first
+ * TLS, then TCP and finally UDP. */
+unsigned long getsrvadr(char *host, int *port, int *transport) {
+	unsigned long adr = 0;
+
+#ifdef HAVE_SRV
+	int srvport = 5060;
+
+#ifdef HAVE_CARES_H
+	int status;
+	int optmask = ARES_OPT_FLAGS;
+	struct ares_options options;
+
+	options.flags = ARES_FLAG_NOCHECKRESP;
+	options.servers = NULL;
+	options.nservers = 0;
+
+	status = ares_init_options(&channel, &options, optmask);
+	if (status != ARES_SUCCESS) {
+		printf("error: failed to initialize ares\n");
+		exit_code(2);
+	}
+#endif
+
+#ifdef WITH_TLS_TRANSP
+	adr = getsrvaddress(host, &srvport, SRV_SIP_TLS);
+	if (adr != 0) {
+		*transport = SIP_TLS_TRANSPORT;
+		if (verbose > 1)
+			printf("using SRV record: %s.%s:%i\n", SRV_SIP_TLS, host, srvport);
+		printf("TLS transport not yet supported\n");
+		exit_code(2);
+	}
+	else {
+#endif
+		adr = getsrvaddress(host, &srvport, SRV_SIP_TCP);
+		if (adr != 0) {
+			*transport = SIP_TCP_TRANSPORT;
+			if (verbose > 1)
+				printf("using SRV record: %s.%s:%i\n", SRV_SIP_TCP, host, srvport);
+		}
+		else {
+			adr = getsrvaddress(host, &srvport, SRV_SIP_UDP);
+			if (adr != 0) {
+				*transport = SIP_UDP_TRANSPORT;
+				if (verbose > 1)
+					printf("using SRV record: %s.%s:%i\n", SRV_SIP_UDP, host, srvport);
+			}
+		}
+#ifdef WITH_TLS_TRANSP
+	}
+#endif
+
+#ifdef HAVE_CARES_H
+	ares_destroy(channel);
+#endif
+
+	*port = srvport;
+#endif // HAVE_SRV
+	return adr;
 }
 
 /* because the full qualified domain name is needed by many other

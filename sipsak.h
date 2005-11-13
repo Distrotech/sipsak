@@ -104,8 +104,7 @@
 #define REQ_FLOOD 6
 #define REQ_RAND 7
 
-#define WITH_TLS_TRANSP
-#define WITH_TCP_TRANSP
+#undef WITH_TLS_TRANSP
 
 #define SIP_TLS_TRANSPORT 1
 #define SIP_TCP_TRANSPORT 2

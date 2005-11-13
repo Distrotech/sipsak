@@ -489,23 +489,27 @@ int main(int argc, char *argv[])
 					fprintf(stderr, "error: missing in host in outbound proxy\n");
 					exit_code(2);
 				}
-				if (!rport)
-					address = getsrvadr(host, &rport, &tsp);
-				if (!address)
+				if (is_ip(host)) {
 					address = getaddress(host);
-				if (!address){
-					fprintf(stderr, "error:unable to determine the outbound proxy "
-						"address\n");
-					exit_code(2);
+					transport = SIP_UDP_TRANSPORT;
 				}
 				else {
-					if (transport == 0)
-						transport = SIP_UDP_TRANSPORT;
-					if (verbose > 1)
-						printf("using A record: %s\n", host);
+					if (!rport) {
+						address = getsrvadr(host, &rport, &tsp);
+						if (tsp != 0)
+							transport = tsp;
+					}
+					if (!address) {
+						address = getaddress(host);
+						if (address && verbose > 1)
+							printf("using A record: %s\n", host);
+					}
+					if (!address){
+						fprintf(stderr, "error:unable to determine the outbound proxy "
+							"address\n");
+						exit_code(2);
+					}
 				}
-				if (transport == 0)
-					transport = tsp;
 				outbound_proxy=1;
 				break;
 			case 'P':
@@ -566,30 +570,31 @@ int main(int argc, char *argv[])
 				if (port && !rport) {
 					rport = port;
 				}
-				if (!rport && !address) {
-					address = getsrvadr(domainname, &rport, &tsp);
-					if (tsp != 0)
-						transport = tsp;
-				}
-				if (!address)
+				if (is_ip(domainname)) {
 					address = getaddress(domainname);
-				if (!address){
-					fprintf(stderr, "error:unable to determine the IP address for: %s\n", domainname);
-					exit_code(2);
+					transport = SIP_UDP_TRANSPORT;
 				}
 				else {
-					if (transport == 0)
-						transport = SIP_UDP_TRANSPORT;
-					if (verbose > 1)
-						printf("using A record: %s\n", domainname);
+					if (!rport && !address) {
+						address = getsrvadr(domainname, &rport, &tsp);
+						if (tsp != 0)
+							transport = tsp;
+					}
+					if (!address) {
+						address = getaddress(domainname);
+						if (address && verbose > 1)
+							printf("using A record: %s\n", domainname);
+					}
+					if (!address){
+						fprintf(stderr, "error:unable to determine the IP address for: %s\n", domainname);
+						exit_code(2);
+					}
 				}
 				if (port != 0) {
 					backup = str_alloc(strlen(domainname)+1+6);
 					snprintf(backup, strlen(domainname)+6, "%s:%i", domainname, port);
 					domainname = backup;
 				}
-				if (transport == 0)
-					transport = tsp;
 				uri_b=1;
 				break;
 			case 'S':
@@ -679,6 +684,9 @@ int main(int argc, char *argv[])
 	if (rport > 65535 || rport <= 0) {
 		fprintf(stderr, "error: invalid remote port: %i\n", rport);
 		exit_code(2);
+	}
+	if (transport == 0) {
+		transport = SIP_UDP_TRANSPORT;
 	}
 
 	/* replace LF with CRLF if we read from a file */

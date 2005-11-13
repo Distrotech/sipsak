@@ -27,9 +27,14 @@
 #else
 # include <time.h>
 #endif
-
 #ifdef HAVE_SYS_SELECT_H
 # include <sys/socket.h>
+#endif
+
+#ifdef HAVE_CARES_H
+# define HAVE_SRV
+#elif HAVE_RULI_H
+# define HAVE_SRV
 #endif
 
 #ifdef HAVE_CARES_H
@@ -47,17 +52,17 @@
 # define DNS_RR_LEN(r)                   DNS__16BIT((r) + 8)
 #endif
 
-#define SRV_SIP_TLS "_sip._tls"
-#define SRV_SIP_TCP "_sip._tcp"
-#define SRV_SIP_UDP "_sip._udp"
+#ifdef HAVE_SRV
+# define SRV_SIP_TLS "_sip._tls"
+# define SRV_SIP_TCP "_sip._tcp"
+# define SRV_SIP_UDP "_sip._udp"
+#endif
 
 int is_ip(char *str);
 
 unsigned long getaddress(char *host);
 
 unsigned long getsrvadr(char *host, int *port, int *transport);
-
-unsigned long getsrvaddress(char *host, int *port, char *srv);
 
 void get_fqdn();
 
