@@ -62,7 +62,7 @@ int is_ip(char *str);
 
 unsigned long getaddress(char *host);
 
-unsigned long getsrvadr(char *host, int *port, int *transport);
+unsigned long getsrvadr(char *host, int *port, unsigned int *transport);
 
 void get_fqdn();
 
